@@ -45,65 +45,77 @@ export interface BlockQueryResponse {
 
 export const useChainStore = create<ChainState, [["zustand/immer", never]]>(
   immer((set) => ({
-    loading: Boolean(false),
+    loading: false,
     async loadBlock() {
       set((state) => {
         state.loading = true;
       });
 
-      const response = await fetch("http://localhost:8080/graphql", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: `
-            query GetBlock {
-              block {
-                txs {
-                  tx {
-                    argsFields
-                    argsJSON
-                    methodId
-                    nonce
-                    sender
-                    signature {
-                      r
-                      s
+      try {
+        const response = await fetch("http://localhost:8080/graphql", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: `
+              query GetBlock {
+                block {
+                  txs {
+                    tx {
+                      argsFields
+                      argsJSON
+                      methodId
+                      nonce
+                      sender
+                      signature {
+                        r
+                        s
+                      }
+                    }
+                    status
+                    statusMessage
+                  }
+                }
+                network {
+                  unproven {
+                    block {
+                      height
                     }
                   }
-                  status
-                  statusMessage
                 }
               }
-              network {
-                unproven {
-                  block {
-                    height
-                  }
-                }
+            `,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Network response was not ok: ${response.statusText}`);
+        }
+
+        const { data } = (await response.json()) as BlockQueryResponse;
+
+        set((state) => {
+          state.loading = false;
+          state.block = data.network.unproven
+            ? {
+                height: data.network.unproven.block.height,
+                ...data.block,
               }
-            }
-          `,
-        }),
-      });
-
-      const { data } = (await response.json()) as BlockQueryResponse;
-
-      set((state) => {
-        state.loading = false;
-        state.block = data.network.unproven
-          ? {
-              height: data.network.unproven.block.height,
-              ...data.block,
-            }
-          : undefined;
-      });
+            : undefined;
+        });
+      } catch (error) {
+        console.error("Failed to load block data:", error);
+        set((state) => {
+          state.loading = false;
+        });
+      }
     },
   })),
 );
 
 export const tickInterval = 1000;
+
 export const usePollBlockHeight = () => {
   const [tick, setTick] = useState(0);
   const chain = useChainStore();
@@ -115,7 +127,7 @@ export const usePollBlockHeight = () => {
   useEffect(() => {
     const intervalId = setInterval(
       () => setTick((tick) => tick + 1),
-      tickInterval,
+      tickInterval
     );
 
     setTick((tick) => tick + 1);
